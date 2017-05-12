@@ -25,11 +25,10 @@ int read_matrix(char *filename, matrix *A)
    MPI_Offset size;
    MPI_Offset position = 0;
 
-   MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_RDONLY, 
-MPI_INFO_NULL, &fh);
+   MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
    MPI_File_get_size(fh, &size);
  
-   printf("file size: %d", size);
+   printf("file size: %d\n", size);
 
    const int buffer_size = 1000;
    char buffer[buffer_size];
@@ -68,7 +67,7 @@ MPI_INFO_NULL, &fh);
    int matrix_size = A->rows * A->columns;
    
    A->matrix = (int *) malloc(matrix_size * sizeof(int));
-   printf(", max byte length: %d\n", max_byte_length);
+   //printf(", max byte length: %d\n", max_byte_length);
 
    int row = 0;
    char *line_buffer = (char *) malloc(max_byte_length * sizeof(char));
@@ -107,13 +106,14 @@ MPI_INFO_NULL, &fh);
 
    free(line_buffer);
  
-   printf("Matrix size: %d x %d\n", A->rows, A->columns);
+   //printf("Matrix size: %d x %d\n", A->rows, A->columns);
    MPI_File_close(&fh);
 }
 
 void print_matrix(matrix A)
 {
    int i,j;
+   printf("\nPrint matrix %d x %d\n", A.rows, A.columns);
    for(i = 0; i < A.rows; i++)
    {
        for(j = 0; j < A.columns; j++)
@@ -190,6 +190,40 @@ void recv_matrix_parts(matrix *A, matrix *B)
 
 }
 
+void multiply_matrix(matrix A, matrix B, matrix *C)
+{
+    C->rows 	= A.rows;
+    C->columns 	= B.columns;
+    int C_size 	= C->rows * C->columns;
+    C->matrix	= (int *) malloc(C_size * sizeof(int));
+
+    //print_matrix(A);
+    //print_matrix(B);
+
+    int C_index;
+    for(C_index = 0; C_index < C_size; C_index++)
+    {
+	int i;
+	int value 	= 0;
+	int row 	= C_index / C->columns;
+	int column 	= C_index - (row * C->columns);
+
+	//printf("row: %d, column: %d\n", row, column);
+	for(i = 0; i < A.columns; i++)
+	{
+	    
+	    int A_index = row * A.columns + i;
+	    int B_index = i * B.columns + column;
+	    //printf("%d: %d,%d ", i,  A_index, B_index);
+
+	    value += A.matrix[A_index] * B.matrix[B_index];
+	}
+
+	C->matrix[C_index] = value;
+	//printf("\n");
+    }
+}
+
 int main(int argc, char **argv)
 {
    int node;
@@ -211,14 +245,17 @@ int main(int argc, char **argv)
        
        matrix A_rest;
        send_matrix_parts(A, B, &A_rest);
-       print_matrix(A_rest);
+       //print_matrix(A_rest);
    }    
    else
    {
+       matrix C;
        recv_matrix_parts(&A, &B);
-       
-       //if(node == 2)
-	  // print_matrix(A);
+       multiply_matrix(A, B, &C);
+       if(node == 1)
+       {
+	   print_matrix(C);
+       }
 
    }
 
