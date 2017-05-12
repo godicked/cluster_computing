@@ -2,6 +2,8 @@
 #include <mpi.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
+
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define INFO_BUFFER 4
@@ -10,12 +12,14 @@
 #define MATRIX_B    2
 #define MATRIX_C    3
 
-typedef struct matrix_struct
+struct matrix_s
 {
     int *matrix;
     int rows;
     int columns;
-} matrix;
+} nmatrix = {NULL, 0, 0};
+
+typedef struct matrix_s matrix;
 
 int read_matrix(char *filename, matrix *A)
 {
@@ -23,90 +27,56 @@ int read_matrix(char *filename, matrix *A)
    MPI_File fh;
    MPI_Status status;
    MPI_Offset size;
-   MPI_Offset position = 0;
 
    MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
    MPI_File_get_size(fh, &size);
  
    printf("file size: %d\n", size);
 
-   const int buffer_size = 1000;
-   char buffer[buffer_size];
+   char *buffer		= (char *) malloc(size * sizeof(char));;
+   A->rows 		= 0;
+   A->columns 		= 0;
+
+   MPI_File_seek(fh, 0, MPI_SEEK_SET);
+   MPI_File_read(fh, buffer, size, MPI_CHAR, &status); 
+       
    int i;
-   A->rows = 0;
-   A->columns = 0;
-   int max_byte_length = 0;
-   int byte_length = 0;
-
-
-   while(position < size)
+   for(i = 0; i < size; i++)
    {
-       MPI_File_seek(fh, position, MPI_SEEK_SET);
-       MPI_File_read(fh, buffer, buffer_size, MPI_CHAR, &status); 
-       
-       
-       for(i = 0; i < buffer_size && position + i < size; i++)
+       if(A->rows == 0 && buffer[i] == ' ')
        {
-	  byte_length++;
-          if(A->rows == 0 && buffer[i] == ' ')
-	  {
-	    A->columns++;
-	  }
-	  if(buffer[i] == '\n')
-	  {
-	     A->rows++;
-	     max_byte_length = MAX(byte_length, max_byte_length);
-	     byte_length = 0;
-	  }
+	   A->columns++;
        }
-
-       position += buffer_size;
-  
+       if(buffer[i] == '\n')
+       {
+           A->rows++;
+       }
    }
+
    A->columns++;
    int matrix_size = A->rows * A->columns;
    
    A->matrix = (int *) malloc(matrix_size * sizeof(int));
    //printf(", max byte length: %d\n", max_byte_length);
 
-   int row = 0;
-   char *line_buffer = (char *) malloc(max_byte_length * sizeof(char));
-   position = 0;
    int index = 0;
-
-   while(position < size)
+   char *pos = buffer;
+       
+   while(pos < buffer + size)
    {
-       MPI_File_seek(fh, position, MPI_SEEK_SET);
-       MPI_File_read(fh, line_buffer, max_byte_length, MPI_CHAR, &status); 
+       char *end;
+       long int value = strtol(pos, &end, 10);
+       if( value == 0L && end == pos)
+	   break;
 
-       int col = 0;
-       char *pos = line_buffer;
-       
-       while(pos < line_buffer + max_byte_length)
-       {
-	   char *end;
-	   long int value = strtol(pos, &end, 10);
-	   if( value == 0L && end == pos)
-	       break;
-
-	   A->matrix[index] = (int) value; 
-	   //printf("%d:%ld ", index, value);
-       	   pos = end;
-	   index++;
-
-	   if(*pos == '\n')
-	   {
-	       pos++;
-	       break;
-	   }
-       
-       }
-       position += pos - line_buffer;
+       A->matrix[index] = (int) value; 
+       //printf("%d:%ld ", index, value);
+       pos = end;
+       index++;
    }
 
-   free(line_buffer);
- 
    //printf("Matrix size: %d x %d\n", A->rows, A->columns);
+   free(buffer);
    MPI_File_close(&fh);
 }
 
@@ -127,14 +97,15 @@ void print_matrix(matrix A)
 
 void free_matrix(matrix *A)
 {
+    if(A->matrix == NULL)
+	return;
+
     free(A->matrix);
 }
 
 
-void send_matrix_parts(matrix A, matrix B, matrix *A_rest)
+void send_matrix_parts(matrix A, matrix B, matrix *A_rest, int comm_size)
 {
-    int comm_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
     int chunk_size = ceil(A.rows / comm_size);
 
     MPI_Request request;
@@ -145,26 +116,27 @@ void send_matrix_parts(matrix A, matrix B, matrix *A_rest)
     buffer[3] = B.columns;
 
     int worker;
-    int *pos_A = A.matrix;
+    int *A_pos = A.matrix;
     for(worker = 1; worker < comm_size; worker++)
     {
 	MPI_Isend(buffer, INFO_BUFFER, MPI_INT, worker, MATRIX_INFO, MPI_COMM_WORLD, 
 		&request);
 
-        MPI_Isend(pos_A, chunk_size * A.columns, MPI_INT, worker, MATRIX_A, 
+        MPI_Isend(A_pos, chunk_size * A.columns, MPI_INT, worker, MATRIX_A, 
 		MPI_COMM_WORLD, &request);
 
 	MPI_Isend(B.matrix, B.rows * B.columns, MPI_INT, worker, MATRIX_B,
 		MPI_COMM_WORLD, &request);
 
-	pos_A += chunk_size * A.columns;
+	A_pos += chunk_size * A.columns;
     }
 
-    int A_rest_size = (A.matrix + (A.rows * A.columns)) - pos_A;
+    int A_rest_size = (A.matrix + (A.rows * A.columns)) - A_pos;
     //printf("rest size : %d", A_rest_size);
-    A_rest->columns = A.columns;
-    A_rest->rows = A_rest_size / A_rest->columns;
-    A_rest->matrix = pos_A;
+    A_rest->columns 	= A.columns;
+    A_rest->rows 	= A_rest_size / A_rest->columns;
+    A_rest->matrix 	= (int *) malloc(A_rest_size * sizeof(int));
+    memcpy(A_rest->matrix, A_pos, A_rest_size * sizeof(int));
     
 }
 
@@ -190,6 +162,28 @@ void recv_matrix_parts(matrix *A, matrix *B)
 
 }
 
+void send_matrix_result(matrix C_part)
+{
+    MPI_Send(C_part.matrix, C_part.rows * C_part.columns, MPI_INT, 0, MATRIX_C, MPI_COMM_WORLD);
+}
+
+void recv_build_matrix(matrix C_part, matrix *C, int comm_size)
+{
+    MPI_Status status;
+    int worker;
+    int *C_pos;
+    int part_size 	= ceil(C->rows / comm_size) * C->columns;
+    int C_size 		= C->rows * C->columns;
+    C->matrix 		= (int *) malloc(C_size * sizeof(int));
+
+    for(worker = 1, C_pos = C->matrix; worker < comm_size; worker++, C_pos += part_size)
+    {
+	MPI_Recv(C_pos, part_size, MPI_INT, worker, MATRIX_C, MPI_COMM_WORLD, &status);
+    }
+
+    memcpy(C_pos, C_part.matrix, C_part.rows * C_part.columns * sizeof(int));
+    
+}
 void multiply_matrix(matrix A, matrix B, matrix *C)
 {
     C->rows 	= A.rows;
@@ -232,31 +226,43 @@ int main(int argc, char **argv)
    MPI_Comm_rank(MPI_COMM_WORLD, &node);
    MPI_Status status;
 
-   printf("\nHello World from Node %d\n",node);
-
-   matrix A,B;
+   matrix A = nmatrix;
+   matrix B = nmatrix;
    
    if(node == 0)
    {
        read_matrix(argv[1], &A);
-       //print_matrix(A);
        read_matrix(argv[2], &B);
-       //print_matrix(B);
        
-       matrix A_rest;
-       send_matrix_parts(A, B, &A_rest);
-       //print_matrix(A_rest);
+       matrix A_rest 	= nmatrix;
+       matrix C_part 	= nmatrix;
+      
+       int comm_size;
+       MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+       
+       send_matrix_parts(A, B, &A_rest, comm_size);
+       multiply_matrix(A_rest, B, &C_part);
+
+       matrix C 	= nmatrix;
+       C.rows 		= A.rows;
+       C.columns	= B.columns;
+
+       recv_build_matrix(C_part, &C, comm_size);
+       print_matrix(C);
+
+
+       free_matrix(&A_rest);
+       free_matrix(&C_part);
+       free_matrix(&C);
    }    
    else
    {
-       matrix C;
+       matrix C_part = nmatrix;
        recv_matrix_parts(&A, &B);
-       multiply_matrix(A, B, &C);
-       if(node == 1)
-       {
-	   print_matrix(C);
-       }
+       multiply_matrix(A, B, &C_part);
+       send_matrix_result(C_part);
 
+       free_matrix(&C_part);
    }
 
    //printf("node: %d finalize\n", node);
