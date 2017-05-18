@@ -7,10 +7,14 @@
 
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define INFO_BUFFER 4
-#define MATRIX_INFO 0
-#define MATRIX_A    1
-#define MATRIX_B    2
-#define MATRIX_C    3
+#define MATRIX_INFO 0                   //Tag for MPI_Send
+#define MATRIX_A    1                   //Tag for MPI_Send
+#define MATRIX_B    2                   //Tag for MPI_Send
+#define MATRIX_C    3                   //Tag for MPI_Send
+
+
+
+//basic matrix struct, used to save the size (rows and columns) and values (*matrix)
 
 struct matrix_s
 {
@@ -21,9 +25,20 @@ struct matrix_s
 
 typedef struct matrix_s matrix;
 
+
+/*
+    read_matrix(filename, *A)
+
+    reads a matrix from file <filename> and fills the content into the A matrix struct:
+    1- Open File
+    2- Get File size for the buffer
+    3- Count rows and columns
+    4- Populate matrix A
+*/
+
 int read_matrix(char *filename, matrix *A)
 {
-   printf("\nRead matrix...");
+   printf("Read matrix...");
    MPI_File fh;
    MPI_Status status;
    MPI_Offset size;
@@ -80,6 +95,12 @@ int read_matrix(char *filename, matrix *A)
    MPI_File_close(&fh);
 }
 
+/*
+    print_matrix(A)
+
+    For debuging, print matrix A to console
+*/
+
 void print_matrix(matrix A)
 {
    int i,j;
@@ -95,6 +116,12 @@ void print_matrix(matrix A)
    printf("\n");
 }
 
+/*
+    free_matrix(A)
+
+    free the array in a matrix struct
+*/
+
 void free_matrix(matrix *A)
 {
     if(A->matrix == NULL)
@@ -103,7 +130,20 @@ void free_matrix(matrix *A)
     free(A->matrix);
 }
 
+/*
+    send_matrix_partts(A, B, *A_rest, comm_size)
 
+    Distribute matrix parts over the nodes
+    Matrix B is send to every Node.
+    Each Node receives a different part of A
+    *A_rest gives the rest back to be processed by the root node
+
+    1- define chunk size
+    2- send matrix information to worker (row/column size)
+    3- partition A and send to worker
+    4- send B
+    5- populate *A_rest
+*/
 void send_matrix_parts(matrix A, matrix B, matrix *A_rest, int comm_size)
 {
     int chunk_size = ceil(A.rows / comm_size);
@@ -140,6 +180,17 @@ void send_matrix_parts(matrix A, matrix B, matrix *A_rest, int comm_size)
     
 }
 
+/*
+    recv_matrix_parts(A, B)
+
+    receive the chunk of matrix A, and the full matrix B from the master node
+
+    1-receive matrix info for A and B
+    2-initialize A and B
+    3-receive A
+    4-receive B
+*/
+
 void recv_matrix_parts(matrix *A, matrix *B)
 {
    int buffer[INFO_BUFFER];
@@ -162,11 +213,28 @@ void recv_matrix_parts(matrix *A, matrix *B)
 
 }
 
+/*
+    send_matrix_result(C_part)
+
+    send the result to the root node
+*/
+
 void send_matrix_result(matrix C_part)
 {
     MPI_Send(C_part.matrix, C_part.rows * C_part.columns, MPI_INT, 0, MATRIX_C, MPI_COMM_WORLD);
 }
 
+/*
+    recv_build_matrix(C_part, *C, comm_size)
+
+    receive parts of the result matrix C from non root-nodes
+
+    1-foreach worker
+        1.1-receive C_part
+        1.2-insert C_part in to C
+
+    2-insert own C_part in to C
+*/
 void recv_build_matrix(matrix C_part, matrix *C, int comm_size)
 {
     MPI_Status status;
@@ -184,6 +252,15 @@ void recv_build_matrix(matrix C_part, matrix *C, int comm_size)
     memcpy(C_pos, C_part.matrix, C_part.rows * C_part.columns * sizeof(int));
     
 }
+
+
+/*
+    multiply_matrix(A, B, *C)
+
+    basic matrix multiplication of A and B, result in C
+
+*/
+
 void multiply_matrix(matrix A, matrix B, matrix *C)
 {
     C->rows 	= A.rows;
@@ -218,6 +295,63 @@ void multiply_matrix(matrix A, matrix B, matrix *C)
     }
 }
 
+/*
+    write_matrix(filenmae, C)
+
+    write matrix C to File <filename>
+
+*/
+void write_matrix(char * filename, matrix C)
+{
+    MPI_File_delete(filename, MPI_INFO_NULL);
+
+    MPI_File fh;
+    MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &fh);
+
+    int C_size 		= C.rows * C.columns;
+    char *buffer 	= malloc((C_size * 10 +
+	    			  C_size +
+				  C.rows) *
+				  sizeof(char));
+
+    MPI_Status status;
+    int i;
+    char *p;
+    for(i = 0, p = buffer; i < C_size; i++)
+    {
+	p += sprintf(p, "%d", C.matrix[i]);
+	if(i % C.columns == C.columns -1)
+	    p += sprintf(p, "\n");
+	else
+	    p += sprintf(p, " ");
+    }
+
+    MPI_File_write(fh, buffer, p - buffer, MPI_CHAR, &status);
+
+    free(buffer);
+    MPI_File_close(&fh);
+
+}
+
+/*
+    main
+
+    Init MPI
+
+    if is root node (node == 0)
+        read matrix A and B
+        send matrix parts to worker
+        calculate own part
+        receive result
+        build result matrix
+        write matrix to File
+    else
+        receive matrix parts
+        calculate part
+        send result back to root
+
+    End MPI
+*/
 int main(int argc, char **argv)
 {
    int node;
@@ -231,6 +365,7 @@ int main(int argc, char **argv)
    
    if(node == 0)
    {
+
        read_matrix(argv[1], &A);
        read_matrix(argv[2], &B);
        
@@ -240,6 +375,9 @@ int main(int argc, char **argv)
        int comm_size;
        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
        
+       printf("start calculation\n");
+       double time = MPI_Wtime();
+
        send_matrix_parts(A, B, &A_rest, comm_size);
        multiply_matrix(A_rest, B, &C_part);
 
@@ -248,7 +386,11 @@ int main(int argc, char **argv)
        C.columns	= B.columns;
 
        recv_build_matrix(C_part, &C, comm_size);
-       print_matrix(C);
+       
+       time = MPI_Wtime() - time;
+       printf("calculation on %d nodes: %.2f seconds\n", comm_size, time); 
+       //print_matrix(C);
+       write_matrix(argv[3], C);
 
 
        free_matrix(&A_rest);
