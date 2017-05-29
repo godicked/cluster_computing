@@ -10,7 +10,11 @@
 #define NO_CALLBACK 0
 #define NO_ARG 0
 
+<<<<<<< HEAD
 #define SEGMENT_ID 120
+=======
+#define SEGMENT_ID 6
+>>>>>>> 0bf2a316e4564127a651d783e8b7ed61d4c92425
 #define ADAPTER_NO 0
 
 
@@ -465,10 +469,19 @@ int main(int argc, char **argv)
 	  matrix C = nmatrix;
 	  C.rows = A.rows;
       C.columns	= B.columns;
+<<<<<<< HEAD
 	  int *C_end_pos = local_address;
 	  C_end_pos += 4 + A_size + B_size;
 	  C.matrix = (int *) malloc(C.rows * C.columns * sizeof(int));
 	  memcpy(C.matrix, C_end_pos, C_size * sizeof(int));
+=======
+
+      // recv_build_matrix(C_part, &C, comm_size);
+      // MPI_Barrier() wait for the other nodes to end
+      // read result matrix from the segment section C-
+       
+      MPI_Barrier(MPI_COMM_WORLD);
+>>>>>>> 0bf2a316e4564127a651d783e8b7ed61d4c92425
       time = MPI_Wtime() - time;
       printf("calculation on %d nodes: %.2f seconds\n", comm_size, time); 
       print_matrix(C);
@@ -488,9 +501,15 @@ int main(int argc, char **argv)
       volatile int *remote_address;
       MPI_Status status;
       MPI_Bcast(&master_node_id, 1, MPI_INT, 0, MPI_COMM_WORLD);
+<<<<<<< HEAD
 
       printf("received master_node_id: %d\n", master_node_id);
 
+=======
+
+      printf("received master_node_id: %d\n", master_node_id);
+
+>>>>>>> 0bf2a316e4564127a651d783e8b7ed61d4c92425
       SCIConnectSegment(v_dev, &remote_segment, master_node_id, SEGMENT_ID, ADAPTER_NO,
 		    NO_CALLBACK, NO_ARG, SCI_INFINITE_TIMEOUT, NO_FLAGS, &error);
 			
@@ -505,6 +524,7 @@ int main(int argc, char **argv)
 
       printf("Node: %d, first two array value: %d, %d\n", local_node_id,
       remote_address[0], remote_address[1]);
+<<<<<<< HEAD
 	  
 	  int chunk_size = ceil(remote_address[0] / comm_size);
 	  A.rows = chunk_size;
@@ -529,6 +549,13 @@ int main(int argc, char **argv)
 	  C_pos += 4 + remote_address[0] * remote_address[1] + remote_address[2] * remote_address[3];
 	  C_pos += (node-1) * chunk_size * B.columns;
 	  memcpy(C_pos, C_part.matrix, C_part.rows * C_part.columns * sizeof(int));
+=======
+
+      // read from segment depending on node id
+      //multiply_matrix(A, B, &C_part);
+      // send_matrix_result(C_part);
+      // write result to segment
+>>>>>>> 0bf2a316e4564127a651d783e8b7ed61d4c92425
       MPI_Barrier(MPI_COMM_WORLD);
       free_matrix(&C_part);
    }
