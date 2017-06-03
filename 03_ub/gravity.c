@@ -158,7 +158,8 @@ void read_point(char *filename, point **points, int *full_size)
 
 void send_point(point *points, int size)
 {
-    
+    MPI_Bcast(&size, 1, MPI_INT, MASTER_ID, MPI_COMM_WORLD);
+    MPI_Bcast(points, size * 3, MPI_FLOAT, MASTER_ID, MPI_COMM_WORLD);   
 }
 
 //  Initialize velocity vector
@@ -252,7 +253,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        receive_point(points, &full_size);
+        receive_points(&points, &full_size);
         work(node_id, comm_size, points, full_size, iteration);
     }
 
