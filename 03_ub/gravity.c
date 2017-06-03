@@ -174,7 +174,7 @@ void init_vel(vector **point_vel, int size)
     }
 }
 
-void receive_points(point **points, *full_size)
+void receive_points(point **points, int *full_size)
 {
     int size;
     MPI_Bcast(&size, 1, MPI_INT, MASTER_ID, MPI_COMM_WORLD);
@@ -253,7 +253,7 @@ int main(int argc, char **argv)
     else
     {
         receive_point(points, &full_size);
-        work(node_id, comm_size, points, iteration);
+        work(node_id, comm_size, points, full_size, iteration);
     }
 
     free(points);
