@@ -1,4 +1,4 @@
 all:
-	mpicc -o gravity gravity.c
+	mpicc -o nbody nbody.c
 run:
-	mpirun -nodes tusci08,tusci12 gravity points
+	mpirun -nodes tusci00,tusci08 nbody 100 points out
