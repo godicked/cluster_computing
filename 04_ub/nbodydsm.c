@@ -102,14 +102,14 @@ void compute_movement(  volatile point *points, vector *point_vel, unsigned int 
     //compute new point_vel for each point between offset and offset + compute_size
     for(i = offset; i < offset + compute_size; i++)
     {
-         point *p1 = &points[i];
+         volatile point *p1 = &points[i];
          // if weight == 0, point is absorbed and should be ignored
          if(p1->weight == 0) continue;
          
          vector acc = {0, 0};
          for(j = 0; j < point_size; j++)
          {
-              point *p2 = &points[j];
+              volatile point *p2 = &points[j];
               // if absorbed or same point ignore
               if (p2->weight == 0 || p1 == p2) continue;
               // add acceleration to total acceleration
@@ -127,7 +127,7 @@ void compute_movement(  volatile point *points, vector *point_vel, unsigned int 
     //printf("%d: offset is: %d and offset + compute_size is: %d\n", node_id, offset, offset + compute_size);
     for(i = offset; i < offset + compute_size; i++)
     {
-        point *p = &points[i];
+        volatile point *p = &points[i];
         // print_points(points, point_size, node_id, iteration, i, "Inside compute points");
         // print_points_segment(segment, node_id, iteration, i, "Inside compute segment");
         //printf("In Iteration %d is Node %d updating point %d with values: %.1f %.1f %.1f \n", iteration, node_id, i, p->x, p->y, p->weight);
@@ -264,7 +264,7 @@ void work(int node_id, int comm_size, volatile point *points, int full_size, int
         // printf("%d: Started computing for iteration: %d and points are: \n", node_id, i);
         // print_points_segment(segment, node_id, i, 99, "Inside work segment");
         // print_points(points, full_size, node_id, i, 99, "Inside work points");
-        compute_movement(points, point_vel, offset, compute_size, full_size, segment, node_id, i);
+        compute_movement(points, point_vel, offset, compute_size, full_size, node_id, i);
         // read_points_segment(segment, &points, &full_size, node_id);
         //update_points(comm_size, points, full_size);
     }
@@ -277,7 +277,7 @@ void work(int node_id, int comm_size, volatile point *points, int full_size, int
 }
 
 // write point back to output
-void write_point( char *filename, point *points, int size) 
+void write_point( char *filename, volatile point *points, int size) 
 {
 
     FILE *fp;
@@ -412,7 +412,7 @@ int main(int argc, char **argv)
 
         memcpy(local_address, points, SEGMENT_SIZE);
         free(points);
-        
+
         // Storing size information into first position in segment
         //float size = (float) full_size;
         //point values = { size, 0.0, 0.0 };
@@ -424,7 +424,7 @@ int main(int argc, char **argv)
 
         // send metadata to worker SCI root and size of point array
         int metadata[2] = {sci_id, full_size};
-        MPI_Bcast(metadata, 2, MPI_INT, MASTER_ID);
+        MPI_Bcast(metadata, 2, MPI_INT, MASTER_ID, MPI_COMM_WORLD);
 
         // send segment information to other nodes
         // MPI_Bcast(&sci_id, 1, MPI_INT, node_id, MPI_COMM_WORLD);
