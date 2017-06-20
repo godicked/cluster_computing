@@ -10,7 +10,7 @@
 
 #define DIST_THRESHOLD 5
 
-
+// point struct
 typedef struct
 {
     float x;
@@ -18,7 +18,7 @@ typedef struct
     float weight;
 } point;
 
-
+// vector struct, used for movement direction
 typedef struct
 {
     float x;
@@ -26,7 +26,8 @@ typedef struct
 } vector;
 
 
-//  compute the acceleration defining the movement from a to b
+//  compute the acceleration induced by b to a
+//  result vector = direction * magnitude
 vector acceleration(point *a, point *b)
 {
     float dx    = b->x - a->x;
@@ -68,6 +69,7 @@ vector acceleration(point *a, point *b)
     return direction;
 }
 
+// Add one vector to another
 void actualise_vel(vector *vel, vector acc)
 {
     //printf("acc: %.1f:%.1f\n", acc.x, acc.y);
@@ -88,32 +90,35 @@ void compute_movement(  point *points, vector *point_vel, unsigned int offset,
     for(i = offset; i < offset + compute_size; i++)
     {
         point *p1 = &points[i];
+	// if weight == 0, point is absorbed and should be ignored
         if(p1->weight == 0) continue;
         
         vector acc = {0, 0};
         for(j = 0; j < point_size; j++)
         {
             point *p2 = &points[j];
+	    // if absorbed or same point ignore
             if (p2->weight == 0 || p1 == p2) continue;
-
+            // add acceleration to total acceleration
             actualise_vel(&acc, acceleration(p1, p2));
         }
+	// add actual computed acceleration to velocity
         actualise_vel(&point_vel[i - offset], acc);
     }
 
-    // compute new point position with the new point_vel
+    // compute new point position
     for(i = offset; i < offset + compute_size; i++)
     {
         point *p = &points[i];
         
         if(p->weight == 0) continue;
-
+	// apply movement
         p->x += point_vel[i - offset].x;
         p->y += point_vel[i - offset].y;
     }
 }
 
-
+// Read point from file
 void read_point(char *filename, point **points, int *full_size)
 {
     FILE *fp;
@@ -163,6 +168,10 @@ void read_point(char *filename, point **points, int *full_size)
     //printf("end read points\n");
 }
 
+// Send point from Master to Worker node
+// 1 send: number of points
+// 2 send: full point array
+// Each struct is 3 float, so we send 3 * size * MPI_FLOAT
 void send_point(point *points, int size)
 {
     //printf("start send point\n");
@@ -183,11 +192,13 @@ void init_vel(vector **point_vel, int size)
     }
 }
 
+// Receive initialisation points from Master
 void receive_points(point **points, int *full_size)
 {
     int size;
+    // receive broadcast
     MPI_Bcast(&size, 1, MPI_INT, MASTER_ID, MPI_COMM_WORLD);
-
+    // alocate array
     *points = (point *) malloc(size * sizeof(point));
     MPI_Bcast(*points, size * 3, MPI_FLOAT, MASTER_ID, MPI_COMM_WORLD); // Each point consist of 3 float
 
@@ -196,6 +207,7 @@ void receive_points(point **points, int *full_size)
     //printf("worker received points\n");
 }
 
+// Every Node Bcast its part to the other. From 0 to n Nodes
 void update_points(int comm_size, point *points, int size)
 {
 
@@ -214,25 +226,31 @@ void update_points(int comm_size, point *points, int size)
     }
 }
 
+// The work done by Workers and Master
+// for each iteration a new position is computed for the points, and send between the Nodes
+// after all iterations are done exit
 void work(int node_id, int comm_size, point *points, int full_size, int iteration)
 {
     // overhead counter
     double overhead = 0;
-
+    // point velocities, allocated only of size N/n
     vector *point_vel;
+    // how much points this Node need to compute
     int compute_size;
     int offset;
     
     compute_size = full_size / comm_size;
     offset = node_id * compute_size;
 
+    // ceil
     if(node_id == comm_size -1)
     	compute_size = (full_size + comm_size -1 ) / comm_size ;
     
     //printf("full_size: %d, comm_size: %d, node_id: %d, compute_size: %d\n", full_size, comm_size, node_id, compute_size);
 
     init_vel(&point_vel, compute_size);
-
+    
+    // Main loop
     int i;
     for(i = 0; i < iteration; i++)
     {
@@ -251,6 +269,7 @@ void work(int node_id, int comm_size, point *points, int full_size, int iteratio
     
 }
 
+// write point back to output
 void write_point( char *filename, point *points, int size) 
 {
 	
@@ -267,6 +286,23 @@ void write_point( char *filename, point *points, int size)
     fclose(fp);
 }
 
+/*
+Master:
+- read points from file
+- send point to worker
+- Work
+- write point back to file
+
+Worker:
+- receive points from Master
+- Work
+
+Work:
+- compute new position
+- share result
+- repeat
+
+*/
 
 int main(int argc, char **argv)
 {
