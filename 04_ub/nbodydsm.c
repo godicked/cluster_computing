@@ -37,7 +37,7 @@ typedef struct
 
 //  compute the acceleration induced by b to a
 //  result vector = direction * magnitude
-vector acceleration(point *a, point *b)
+vector acceleration(volatile point *a, volatile point *b)
 {
     float dx    = b->x - a->x;
     float dy    = b->y - a->y;
