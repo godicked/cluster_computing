@@ -1,0 +1,43 @@
+Aufgabe 2-1
+a)
+
+Aus Amdahls Gesetz unterteilt die Laufzeit eines Programmes in zwei Teile: Den sequenziellen und den parallelisierbaren Teil.
+Die Laufzeit des parallelisierbaren Teil sinkt mit der Anzahl an Prozessoren, und der sequenzielle Teil bleibt constant.
+
+Daraus lässt sich ableiten das die Laufzeit der Anwendung, mit hilfe von mehr Prozessoren, reduzieren lässt. Bis zu einem Limit: die laufzeit des sequentiellen Teil.
+
+(Beispiel ?)
+
+Um die Laufzeit von parallelen Programme zu analysieren kann auch die Größe des Problems einen einfluss auf den Speed-Up haben. So wie der Entstehende Overhead durch die Kommunication/Synchronisation zwischen verschiedenen Prozessoren.
+
+Daraus läst sich ableiten das die Laufzeit eines Programmes mit mehr prozessoren reduzieren lässt bis der Overhead größer wird als der Speed-Up. Der Overhead hängt sowohl vom Bedarf an Kommunication und der Problem größe ab.
+
+Die Matrix multiplication ist ein Beispeil für diesen Fall, da eine parallele Ausführung nur für große Matrizen die laufzeit reduziert. Test Ergebnisse zeigen das eine größere Anzahl an Prozessoren den Speed-Up verringert wenn die größe des Problems nicht steigt. Hier entsteht der Overhead durch das vollständige Senden der Matrix an jeden Knoten.
+
+b)
+
+Beide Programme sollen enden, und bekommen deswegen jeweils mindestens 1 prozessor => p(S1) >= 1, p(S2) >= 1.
+
+
+DS1 = S1(p+1) - S1(p) ist Konstant (0.5)
+DS2 = S2(p+1) - S2(p) ist größer als DS1 für p < 5 und kleiner für p >= 5
+
+Um den Speed-Up zu optimieren sollten zuerst max 4 prozessoren S2 zugewiesen werden, und die restlichen S1. 
+
+Für p = 5
+p(S1) = 1
+p(S2) = 4
+
+Für p = 10
+p(S1) = 6
+p(S2) = 4
+
+Für p = 15
+p(S1) = 11
+p(S2) = 4
+
+Für p = 20
+p(S1) = 12
+p(s2) = 8
+
+Sollte DS1 immer noch konztant sein für 12 < p <= 16 und DS1 > DS2, dann kann auch p(S1) = 16 un p(S2) = 4 gewählt werden.
