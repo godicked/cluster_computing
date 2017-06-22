@@ -17,7 +17,7 @@
 
 #define MASTER_ID 0
 
-#define DIST_THRESHOLD 5
+#define DIST_THRESHOLD 1
 
 // point struct
 typedef struct
